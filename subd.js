@@ -1,0 +1,548 @@
+/**
+* @author wadeb / http://wadeb.com/
+*/
+
+// The Quad Edge mesh is a useful data structure for navigating manifold topology.
+// For documentation, see http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/2001/pub/src/a2/quadedge.html
+THREE.QuadEdgeMesh = function(mesh) {
+
+	function HalfEdge(faceIndex, vert0, vert1) {
+		this.faceIndex = faceIndex;
+		this.vert0 = vert0;
+		this.vert1 = vert1;
+		this.opposite = null;
+		this.faceNext = null;
+		this.facePrev = null;
+		this.vertNext = null;
+		this.vertPrev = null;
+	}
+
+	this.addFace = function(verts) {
+		var edges = this.edges;
+		var edgeTable = this.edgeTable;
+
+		var faceIndex = this.faceEdges.length;
+		var firstEdgeIndex = edges.length;
+
+		var index0 = 0;
+		var index1 = 1;
+		var faceVertCount = verts.length;
+		var vertCount = this.vertCount;
+
+		// Add all the face's half edges into the edge structure.
+		while (index0 < faceVertCount) {
+			var vert0 = verts[index0];
+			var vert1 = verts[index1];
+
+			// Build half edge structure.
+			edge = new HalfEdge(faceIndex, vert0, vert1);
+			edges.push(edge);
+
+			function makeEdgeHash(vertCount, vert0, vert1) {
+				return vertCount * vert0 + vert1;
+			};
+
+			// Insert into hash table for looking up its opposite.
+			// If two or more edges use the same vertices in the same winding order, the mesh is non-manifold
+			// and is not a valid Catmull Clark Subdivision Surface.
+			var edgeHash = makeEdgeHash(vertCount, vert0, vert1);
+			if (edgeTable[edgeHash]) {
+				throw "Non-manifold edge in input data between verts "+vert0+" and "+vert1;
+			}
+			edgeTable[edgeHash] = edge;
+
+			// Connect edges to their opposite half edge.
+			// E.g. the same vertices but in the opposite direction.
+			var reverseEdgeHash = makeEdgeHash(vertCount, vert1, vert0);
+			var reverseEdge = edgeTable[reverseEdgeHash];
+			if (reverseEdge) {
+				edge.opposite = reverseEdge;
+				reverseEdge.opposite = edge;
+			}
+
+			index0++;
+			index1++;
+			if (index1 == faceVertCount)
+				index1 = 0;
+		}
+		
+		// Connect edges to their neighbors on the same face.
+		var firstEdge = edges[firstEdgeIndex];		
+		firstEdge.faceNext = edges[firstEdgeIndex + 1];
+		firstEdge.facePrev = edges[firstEdgeIndex + faceVertCount - 1];
+
+		for (var i = 1; i < faceVertCount - 1; i++) {
+			var edge = edges[firstEdgeIndex + i];
+			edge.faceNext = edges[firstEdgeIndex + i + 1];
+			edge.facePrev = edges[firstEdgeIndex + i - 1];
+		}
+
+		var lastEdge = edges[firstEdgeIndex + faceVertCount - 1];
+		lastEdge.faceNext = edges[firstEdgeIndex];
+		lastEdge.facePrev = edges[firstEdgeIndex + faceVertCount - 2];
+
+		// Store the first edge on the face to mark its beginning.
+		this.faceEdges.push(firstEdge);
+	}
+
+	this.finishEdges = function() {
+		for (var i = 0; i < this.edges.length; i++) {
+			var edge = this.edges[i];
+
+			edge.vertNext = edge.facePrev.opposite;
+			if (edge.opposite)
+				edge.vertPrev = edge.opposite.faceNext;
+
+			this.vertEdges[edge.vert0] = edge;
+		}
+	}
+
+	this.faces = [];
+	this.edges = [];
+	this.edgeTable = {};
+	this.vertEdges = [];
+	this.faceEdges = [];
+	this.vertCount = mesh.verts.length;
+
+	for (var i = 0; i < mesh.faces.length; i++)
+		this.addFace(mesh.faces[i]);
+
+	this.finishEdges();
+}
+
+THREE.FacePoint = 0;
+THREE.SmoothEdgePoint = 1;
+THREE.BorderEdgePoint = 2;
+THREE.SmoothVertPoint = 3;
+THREE.BorderVertPoint = 4;
+THREE.CornerVertPoint = 5;
+
+THREE.SubD = function(parameters) {
+	parameters = parameters || {}
+	this.verts = parameters["verts"] || [];
+	this.faces = parameters["faces"] || [];
+
+	if ("vertKinds" in parameters) {
+		this.vertKinds = parameters["vertKinds"];
+	} else {
+		this.vertKinds = [];
+		for (var i = 0; i < this.vertPointCount; i++)
+			this.vertKinds[i] = THREE.SmoothVertPoint;
+	}
+
+//	this.qe = new THREE.QuadEdgeMesh(this);
+
+	this.makeGeometry = function(parameters) {
+		parameters = parameters || {}
+		var flipWinding = parameters["flipWinding"] || false;
+
+		var verts = this.verts;
+		var faces = this.faces;
+		var faceCount = this.faces.length;
+
+		var triVertCount = 0;
+		for (var i = 0; i < faceCount; i++)
+			triVertCount += (faces[i].length - 2) * 3;
+
+		var geometry = new THREE.Geometry2(triVertCount);
+		var vertices = geometry.vertices;
+		var offset = 0;
+		var vert;
+
+		// NB: This triangulation algorithm is insufficient for many kinds of polygons.  
+		// See http://www.geometrictools.com/Documentation/TriangulationByEarClipping.pdf for a better one.
+		for (var i = 0; i < faceCount; i++) {
+			var face = faces[i];
+			var faceValence = face.length;
+
+			if (flipWinding) {
+				for (var j = 2; j < faceValence; j++) {
+					vert = verts[face[0]];
+					vertices[offset++] = vert.x;
+					vertices[offset++] = vert.y;
+					vertices[offset++] = vert.z;
+
+					vert = verts[face[j]];
+					vertices[offset++] = vert.x;
+					vertices[offset++] = vert.y;
+					vertices[offset++] = vert.z;
+					
+					vert = verts[face[j - 1]];
+					vertices[offset++] = vert.x;
+					vertices[offset++] = vert.y;
+					vertices[offset++] = vert.z;
+				}
+			} else {
+				for (var j = 2; j < faceValence; j++) {
+					vert = verts[face[0]];
+					vertices[offset++] = vert.x;
+					vertices[offset++] = vert.y;
+					vertices[offset++] = vert.z;
+
+					vert = verts[face[j - 1]];
+					vertices[offset++] = vert.x;
+					vertices[offset++] = vert.y;
+					vertices[offset++] = vert.z;
+					
+					vert = verts[face[j]];
+					vertices[offset++] = vert.x;
+					vertices[offset++] = vert.y;
+					vertices[offset++] = vert.z;
+				}
+			}
+		}
+
+		return geometry;
+	}
+	
+	this.makeWireGeometry = function() {
+		var verts = this.verts;
+		var faces = this.faces;
+		var faceCount = this.faces.length;
+
+		var lineVertCount = 0;
+		for (var i = 0; i < faceCount; i++)
+			lineVertCount += (faces[i].length - 2) * 4; // XXX why *4 is needed is unclear, should be *2
+
+		var geometry = new THREE.Geometry2(lineVertCount);
+		var vertices = geometry.vertices;
+		var offset = 0;
+		var vert;
+
+		for (var i = 0; i < faceCount; i++) {
+			var face = this.faces[i];
+			var faceValence = face.length;
+
+			for (var j = 0; j < faceValence; j++) {
+				vert = verts[face[j]];
+				vertices[offset++] = vert.x;
+				vertices[offset++] = vert.y;
+				vertices[offset++] = vert.z;
+
+				vert = verts[face[(j + 1) % faceValence]];
+				vertices[offset++] = vert.x;
+				vertices[offset++] = vert.y;
+				vertices[offset++] = vert.z;
+			}
+		}
+
+		return geometry;
+	}
+
+	this.Smooth = function(parameters) {
+		parameters = parameters || {};
+		var showVerts = parameters["showVerts"] || false;
+
+		//var qe = this.qe;
+		var qe = new THREE.QuadEdgeMesh(this);
+
+		var verts = [];
+		var vertKinds = [];
+
+		// Calculate face points; centroid of face verts.
+		for (var i = 0; i < qe.faceEdges.length; i++) {
+			var facePoint = new THREE.Vector3();
+
+			var edge = qe.faceEdges[i];
+			var valence = 0;
+			do {
+				facePoint.add(this.verts[edge.vert0]);
+				valence++;
+				edge = edge.faceNext;
+			} while (edge != qe.faceEdges[i]);
+
+			facePoint.divideScalar(valence);
+
+			vertKinds.push(THREE.FacePoint);
+
+			verts.push(facePoint);
+		}
+
+		// Calculate edge points; average of endpoints and adjacent face points for smooth,
+		// average of end points if a border.
+		for (var i = 0; i < qe.edges.length; i++) {
+			var edge = qe.edges[i];
+
+			edge.index = null;					
+		}
+
+		for (var i = 0; i < qe.edges.length; i++) {
+			var edge = qe.edges[i];
+
+			if (edge.index != null)
+				continue;
+
+			var edgePoint = new THREE.Vector3();
+			edgePoint.copy(this.verts[edge.vert0]);
+			edgePoint.add(this.verts[edge.vert1]);
+
+			if (edge.opposite) {
+				edgePoint.add(verts[edge.faceIndex]);
+				edgePoint.add(verts[edge.opposite.faceIndex]);
+				edgePoint.divideScalar(4.0);
+
+				vertKinds.push(THREE.SmoothEdgePoint);
+			} else {
+				edgePoint.divideScalar(2.0);
+
+				vertKinds.push(THREE.BorderEdgePoint);
+			}
+
+			edge.index = verts.length;
+			if (edge.opposite)
+				edge.opposite.index = edge.index;
+
+			verts.push(edgePoint);
+		}
+
+		// Calculate vertex points; weighted average of adjacent vertices and face points,
+		// unless border or corner rules apply.
+		var firstVertPoint = verts.length;
+
+		for (var i = 0; i < qe.vertCount; i++) {
+			var firstEdge = qe.vertEdges[i];
+			do {
+				if (firstEdge.vertPrev)
+					firstEdge = firstEdge.vertPrev;
+			} while (firstEdge.vertPrev && firstEdge != qe.vertEdges[i]);
+
+			var borderEdges = [];
+			var valence = 0;
+			var edge = firstEdge;
+			do {
+				if (edge.vertPrev == null || edge.vertNext == null)
+					borderEdges.push(edge);
+				valence += 1;
+				edge = edge.vertNext;
+			} while (edge && edge != firstEdge);
+
+			var vertPoint = new THREE.Vector3();
+			vertPoint.copy(this.verts[i]);
+
+			if (borderEdges.length > 2 || valence == 1) {
+				vertKinds.push(THREE.CornerVertPoint);
+			} else if (borderEdges.length == 2) {
+				var borderVert0 = new THREE.Vector3();
+				borderVert0.copy(this.verts[borderEdges[0].vert1]);
+
+				var borderVert1 = new THREE.Vector3();
+				borderVert1.copy(this.verts[borderEdges[1].facePrev.vert0]);
+
+				vertPoint.multiplyScalar(6.0/8.0)
+				borderVert0.multiplyScalar(1.0/8.0);
+				borderVert1.multiplyScalar(1.0/8.0);
+
+				vertPoint.add(borderVert0);
+				vertPoint.add(borderVert1);
+
+				vertKinds.push(THREE.BorderVertPoint);
+			} else {
+				var neighborSum = new THREE.Vector3();
+				var faceSum = new THREE.Vector3();
+
+				var edge = firstEdge;
+				do {
+					neighborSum.add(this.verts[edge.vert1]);
+					faceSum.add(verts[edge.faceIndex]);
+					edge = edge.vertNext;
+				} while (edge != firstEdge);
+
+				var baseScalar = (valence - 2.0) / valence;
+				var neighborScalar = 1.0 / (valence * valence);
+
+				vertPoint.multiplyScalar(baseScalar);
+				neighborSum.multiplyScalar(neighborScalar);
+				faceSum.multiplyScalar(neighborScalar);
+
+				vertPoint.add(neighborSum);
+				vertPoint.add(faceSum);
+
+				vertKinds.push(THREE.SmoothVertPoint);
+			}
+
+			verts.push(vertPoint);
+		}
+
+		// Build new faces from face points, edge points and vertex points.
+		var faces = [];
+
+		for (var i = 0; i  < qe.faceEdges.length; i++) {
+			var firstEdge = qe.faceEdges[i];
+			var edge = firstEdge;
+			do {
+				faces.push([ 
+					i, 
+					edge.facePrev.index, 
+					firstVertPoint + edge.vert0, 
+					edge.index
+				]);
+				edge = edge.faceNext;
+			} while (edge != firstEdge);
+		}
+
+		return new THREE.SubD({ 
+			'verts': verts, 
+			'faces': faces, 
+			'vertKinds': vertKinds 
+		});
+	}
+}
+
+/**
+ * @author mrdoob / http://mrdoob.com/
+ * @author wadeb / http://wadeb.com/
+ */
+
+THREE.SubDOBJLoader = function ( manager ) {
+
+	this.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;
+
+};
+
+THREE.SubDOBJLoader.prototype = {
+
+	constructor: THREE.SubDOBJLoader,
+
+	load: function ( url, onLoad, onProgress, onError ) {
+
+		var scope = this;
+
+		var loader = new THREE.XHRLoader( scope.manager );
+		loader.setCrossOrigin( this.crossOrigin );
+		loader.load( url, function ( text ) {
+
+			onLoad( scope.parse( text ) );
+
+		} );
+
+	},
+
+	parse: function ( text ) {
+
+		var verts = [];
+		var faces = [];
+
+		function parseVertexIndex( value ) {
+
+			var index = parseInt( value );
+
+			return ( index >= 0 ? index - 1 : index + mesh.verts.length );
+
+		}
+
+		function parseUVIndex( value ) {
+
+			var index = parseInt( value );
+
+			return ( index >= 0 ? index - 1 : index + mesh.uvs.length );
+
+		}
+
+		// v float float float
+
+		var vertex_pattern = /v( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
+
+		// vn float float float
+
+		var normal_pattern = /vn( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
+
+		// vt float float
+
+		var uv_pattern = /vt( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
+
+		// f vertex/uv/normal vertex/uv/normal vertex/uv/normal ...
+
+		var face_vert_pattern = / +(-?\d+)(\/(-?\d+)?)?(\/(-?\d+)?)?/;
+
+		//
+
+		var lines = text.split( '\n' );
+
+		for ( var i = 0; i < lines.length; i ++ ) {
+
+			var line = lines[ i ];
+			line = line.trim();
+
+			var result;
+
+			if ( line.length === 0 || line.charAt( 0 ) === '#' ) {
+
+				continue;
+
+			} else if ( ( result = vertex_pattern.exec( line ) ) !== null ) {
+
+				// ["v 1.0 2.0 3.0", "1.0", "2.0", "3.0"]
+
+				verts.push(
+					new THREE.Vector3(
+						parseFloat( result[ 1 ] ),
+						parseFloat( result[ 2 ] ),
+						parseFloat( result[ 3 ] )
+					)
+				);
+
+			} else if ( ( result = normal_pattern.exec( line ) ) !== null ) {
+
+				// ["vn 1.0 2.0 3.0", "1.0", "2.0", "3.0"]
+
+			} else if ( ( result = uv_pattern.exec( line ) ) !== null ) {
+
+				// ["vt 0.1 0.2", "0.1", "0.2"]
+
+				// mesh.uvs.push(
+				// 	parseFloat( result[ 1 ] ),
+				// 	parseFloat( result[ 2 ] )
+				// );
+
+			} else if ( /^f /.test( line ) ) {
+
+				var faceVerts = [];
+				// var faceUVs = [];
+
+				line = line.substring( 1 );
+
+				while ( ( result = face_vert_pattern.exec( line ) ) != null ) {
+
+					// [" 0/1/2", "0", "/1", "1", "/2", "2"]
+
+					faceVerts.push( parseVertexIndex( result[ 1 ] ) );
+					// faceUVs.push( parseUVIndex( result[ 3 ] ) );
+
+					line = line.substring( result[ 0 ].length );
+				}
+
+				faces.push( faceVerts );
+
+			} else if ( /^o /.test( line ) ) {
+
+				// object
+
+			} else if ( /^g /.test( line ) ) {
+
+				// group
+
+			} else if ( /^usemtl /.test( line ) ) {
+
+				// material
+
+			} else if ( /^mtllib /.test( line ) ) {
+
+				// mtl file
+
+			} else if ( /^s /.test( line ) ) {
+
+				// smooth shading
+
+			} else {
+
+				// console.log( "THREE.OBJLoader: Unhandled line " + line );
+
+			}
+
+		}
+
+		return new THREE.SubD({ 'verts': verts, 'faces': faces });
+
+	}
+
+};
