@@ -25,7 +25,7 @@
 				z-index:100;
 			}
 
-			a { color: #0080ff; }
+			a { color: #181; }
 
 			b { color:orange }
 
@@ -40,7 +40,10 @@
 		<div id="info"><a href="http://wadeb.com/">wadeb</a> - SubD<br/><br/>
 		<b>0-3</b> smoothness, <b>C</b> control mesh, <b>V</b> verts, <b>W</b> wireframe<br/>
 		<b>Models [</b> 
+		<a href="javascript:setModel('head.obj');">head</a> 
+		<a href="javascript:setModel('bigguy_0.obj');">bigguy</a> 
 		<a href="javascript:setModel('monsterfrog_cage0.obj');">monsterfrog</a> 
+		<a href="javascript:setModel('mudbox_reptile.obj');">reptile</a> 
 		<b>]</b> 
 		</div>
 
@@ -168,13 +171,13 @@
 		}
 
 		var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-		camera.position.set(-3, 3, 4);
+		camera.position.set(2, 3, 4);
 
 		var renderer = new THREE.WebGLRenderer({ "antialias": true });
 		renderer.setClearColor("antiquewhite", 1);
 		renderer.setSize(window.innerWidth, window.innerHeight);
-		// renderer.shadowMapEnabled = true;
-		// renderer.shadowMapSoft = true;
+		renderer.shadowMapEnabled = true;
+		renderer.shadowMapSoft = true;
 		document.body.appendChild(renderer.domElement);
 
 		var cylinderSubD = new THREE.SubD({
@@ -244,8 +247,9 @@
 		var controlWireMaterial = new THREE.LineBasicMaterial({ color: 0x008000 });
 
 		var enableControlGeometry = true;
-		var enableWireframe = true;
+		var enableWireframe = false;
 		var enableVerts = false;
+		var enableShadows = false;
 		var smoothLevel = 3;
 
 		var scene = null;
@@ -262,7 +266,9 @@
 
 				subdMesh = model;
 				for (var i = 0; i < smoothLevel; i++)
-					subdMesh = subdMesh.Smooth();
+					subdMesh = subdMesh.smooth();
+
+				subdMesh.calculateNormals();
 
 				subdGeometry = subdMesh.makeGeometry();
 				subdInsideGeometry = subdMesh.makeGeometry({ flipWinding: true });
@@ -280,30 +286,34 @@
 				var light = new THREE.SpotLight(0xe0e0e0);
 				light.position.set(5, 5, 5);
 				light.target.position.set( 0, 0, 0 );
-				// light.castShadow = true;
-				// light.shadowCameraNear = 6;
-				// light.shadowCameraFar = 10;
-				// light.shadowCameraFov = 30;
-				// light.shadowDarkness = 1;
-				// light.shadowCameraVisible = true;
-				// light.shadowMapWidth = 1024;
-				// light.shadowMapHeight = 1024;
+				if (enableShadows) {
+					light.castShadow = true;
+					light.shadowCameraNear = 6;
+					light.shadowCameraFar = 10;
+					light.shadowCameraFov = 30;
+					light.shadowDarkness = 1;
+					light.shadowCameraVisible = true;
+					light.shadowMapWidth = 1024;
+					light.shadowMapHeight = 1024;
+				}
 				scene.add(light);
 			} else {
 				var light = new THREE.DirectionalLight(0xe0e0e0, 0.5);
 				light.position.set(10, 10, 10);
 				light.target.position.set( 0, 0, 0 );
-				// light.castShadow = true;
-				// light.shadowCameraNear = 10;
-				// light.shadowCameraFar = 30;
-				// light.shadowCameraRight = 10;
-				// light.shadowCameraLeft = -10;
-				// light.shadowCameraTop = -10;
-				// light.shadowCameraBottom = 10;
-				// light.shadowDarkness = 0.5;
-				// light.shadowCameraVisible = true;
-				// light.shadowMapWidth = 2048;
-				// light.shadowMapHeight = 2048;
+				if (enableShadows) {
+					light.castShadow = true;
+					light.shadowCameraNear = 10;
+					light.shadowCameraFar = 30;
+					light.shadowCameraRight = 10;
+					light.shadowCameraLeft = -10;
+					light.shadowCameraTop = -10;
+					light.shadowCameraBottom = 10;
+					light.shadowDarkness = 0.5;
+					light.shadowCameraVisible = true;
+					light.shadowMapWidth = 2048;
+					light.shadowMapHeight = 2048;
+				}
 				scene.add(light);
 			}
 
@@ -314,14 +324,18 @@
 				}
 
 				var subdObject = new THREE.Mesh(subdGeometry, subdMaterial);
-				// subdObject.castShadow = true;
-				// subdObject.receiveShadow = false;
-				scene.add(subdObject);				
+				if (enableShadows) {
+					subdObject.castShadow = true;
+					subdObject.receiveShadow = false;
+				}
+				scene.add(subdObject);
 
 				var subdInsideObject = new THREE.Mesh(subdInsideGeometry, subdInsideMaterial);
-				// subdInsideObject.castShadow = true;
-				// subdInsideObject.receiveShadow = true;
-				scene.add(subdInsideObject);				
+				if (enableShadows) {
+					subdInsideObject.castShadow = true;
+					subdInsideObject.receiveShadow = true;
+				}
+				scene.add(subdInsideObject);
 
 				if (enableVerts) {
 					for (var i = 0; i < subdMesh.verts.length; i++) {
@@ -342,7 +356,9 @@
 
 			var plane = new THREE.Mesh(new THREE.PlaneGeometry(10, 10, 1, 1), subdMaterial);
 			plane.rotateOnAxis(new THREE.Vector3(1, 0, 0), -3.14159/2);
-			// plane.receiveShadow = true;
+			if (enableShadows) {
+				plane.receiveShadow = true;
+			}
 			scene.add(plane);
 		}
 
@@ -364,7 +380,7 @@
 				case 50: /*2*/ smoothLevel = 2; buildGeometry(); break;
 				case 51: /*3*/ smoothLevel = 3; buildGeometry(); break;
 				case 67: /*c*/ enableControlGeometry = !enableControlGeometry; break;
-				case 83: /*s*/ enableSubD = !enableSubD; break;
+				case 83: /*s*/ enableShadows = !enableShadows; break;
 				case 86: /*v*/ enableVerts = !enableVerts; break;
 				case 87: /*w*/ enableWireframe = !enableWireframe; break;
 				default: return;

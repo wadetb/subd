@@ -3,13 +3,11 @@ SubD Notes
 
 # TODO
 
-- Don't build a QE mesh for the final level.
-- Micro-optimize QuadEdge and Smooth.
+- Extend the QuadEdgeMesh each step instead of recalculating it.
 - Make original face edges bold in wireframe
 - Textures
 - Texture coordinate smoothing
 - Animate between levels
-- Sprites at fixed screen size
 
 # Edge based wireframe code
 

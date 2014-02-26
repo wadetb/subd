@@ -137,6 +137,7 @@ THREE.SubD = function(parameters) {
 		var flipWinding = parameters["flipWinding"] || false;
 
 		var verts = this.verts;
+		var normals = this.normals;
 		var faces = this.faces;
 		var faceCount = this.faces.length;
 
@@ -145,7 +146,8 @@ THREE.SubD = function(parameters) {
 			triVertCount += (faces[i].length - 2) * 3;
 
 		var geometry = new THREE.Geometry2(triVertCount);
-		var vertices = geometry.vertices;
+		var geometryVerts = geometry.vertices;
+		var geometryNormals = geometry.normals;
 		var offset = 0;
 		var vert;
 
@@ -157,44 +159,90 @@ THREE.SubD = function(parameters) {
 
 			if (flipWinding) {
 				for (var j = 2; j < faceValence; j++) {
-					vert = verts[face[0]];
-					vertices[offset++] = vert.x;
-					vertices[offset++] = vert.y;
-					vertices[offset++] = vert.z;
+					vertIndex = face[0];
 
-					vert = verts[face[j]];
-					vertices[offset++] = vert.x;
-					vertices[offset++] = vert.y;
-					vertices[offset++] = vert.z;
-					
-					vert = verts[face[j - 1]];
-					vertices[offset++] = vert.x;
-					vertices[offset++] = vert.y;
-					vertices[offset++] = vert.z;
+					vert = verts[vertIndex];
+					geometryVerts[offset + 0] = vert.x;
+					geometryVerts[offset + 1] = vert.y;
+					geometryVerts[offset + 2] = vert.z;
+
+					normal = normals[vertIndex];
+					geometryNormals[offset + 0] = normal.x;
+					geometryNormals[offset + 1] = normal.y;
+					geometryNormals[offset + 2] = normal.z;
+
+					vertIndex = face[j];
+
+					vert = verts[vertIndex];
+					geometryVerts[offset + 3] = vert.x;
+					geometryVerts[offset + 4] = vert.y;
+					geometryVerts[offset + 5] = vert.z;
+
+					normal = normals[vertIndex];
+					geometryNormals[offset + 3] = normal.x;
+					geometryNormals[offset + 4] = normal.y;
+					geometryNormals[offset + 5] = normal.z;
+				
+					vertIndex = face[j - 1];
+
+					vert = verts[vertIndex];
+					geometryVerts[offset + 6] = vert.x;
+					geometryVerts[offset + 7] = vert.y;
+					geometryVerts[offset + 8] = vert.z;
+
+					normal = normals[vertIndex];
+					geometryNormals[offset + 6] = normal.x;
+					geometryNormals[offset + 7] = normal.y;
+					geometryNormals[offset + 8] = normal.z;
+
+					offset += 9;
 				}
 			} else {
 				for (var j = 2; j < faceValence; j++) {
-					vert = verts[face[0]];
-					vertices[offset++] = vert.x;
-					vertices[offset++] = vert.y;
-					vertices[offset++] = vert.z;
+					vertIndex = face[0];
 
-					vert = verts[face[j - 1]];
-					vertices[offset++] = vert.x;
-					vertices[offset++] = vert.y;
-					vertices[offset++] = vert.z;
-					
-					vert = verts[face[j]];
-					vertices[offset++] = vert.x;
-					vertices[offset++] = vert.y;
-					vertices[offset++] = vert.z;
+					vert = verts[vertIndex];
+					geometryVerts[offset + 0] = vert.x;
+					geometryVerts[offset + 1] = vert.y;
+					geometryVerts[offset + 2] = vert.z;
+
+					normal = normals[vertIndex];
+					geometryNormals[offset + 0] = normal.x;
+					geometryNormals[offset + 1] = normal.y;
+					geometryNormals[offset + 2] = normal.z;
+
+					vertIndex = face[j - 1];
+
+					vert = verts[vertIndex];
+					geometryVerts[offset + 3] = vert.x;
+					geometryVerts[offset + 4] = vert.y;
+					geometryVerts[offset + 5] = vert.z;
+
+					normal = normals[vertIndex];
+					geometryNormals[offset + 3] = normal.x;
+					geometryNormals[offset + 4] = normal.y;
+					geometryNormals[offset + 5] = normal.z;
+				
+					vertIndex = face[j];
+
+					vert = verts[vertIndex];
+					geometryVerts[offset + 6] = vert.x;
+					geometryVerts[offset + 7] = vert.y;
+					geometryVerts[offset + 8] = vert.z;
+
+					normal = normals[vertIndex];
+					geometryNormals[offset + 6] = normal.x;
+					geometryNormals[offset + 7] = normal.y;
+					geometryNormals[offset + 8] = normal.z;
+
+					offset += 9;
 				}
 			}
 		}
 
 		return geometry;
 	}
-	
+
 	this.makeWireGeometry = function() {
 		var verts = this.verts;
 		var faces = this.faces;
@@ -229,10 +277,57 @@ THREE.SubD = function(parameters) {
 		return geometry;
 	}
 
-	this.Smooth = function(parameters) {
-		parameters = parameters || {};
-		var showVerts = parameters["showVerts"] || false;
+	this.calculateNormals = function() {
+		var faces = this.faces;
+		var faceCount = faces.length;
+		var verts = this.verts;
+		var vertCount = verts.length;
 
+		var normals = new Array(this.verts.length);
+
+		for (var i = 0; i < vertCount; i++)
+			normals[i] = new THREE.Vector3();
+
+		var vert0 = new THREE.Vector3();
+		var vert1 = new THREE.Vector3();
+		var vert2 = new THREE.Vector3();
+
+		var v01 = new THREE.Vector3();
+		var v02 = new THREE.Vector3();
+		var tn = new THREE.Vector3();
+		var fn = new THREE.Vector3();
+
+		for (var i = 0; i < faceCount; i++) {
+			var face = faces[i];
+			var faceVertCount = face.length;
+
+			fn.set(0, 0, 0);
+
+			// NB: This triangulation algorithm is insufficient for many kinds of polygons.  
+			// See http://www.geometrictools.com/Documentation/TriangulationByEarClipping.pdf for a better one.
+			for (var j = 2; j < faceVertCount; j++) {
+				vert0 = verts[face[0]];
+				vert1 = verts[face[j - 1]];
+				vert2 = verts[face[j]];
+
+				v01.subVectors(vert1, vert0);
+				v02.subVectors(vert2, vert0);
+
+				tn.crossVectors(v01, v02);
+				fn.add(tn);
+			}
+
+			for (var j = 0; j < faceVertCount; j++)
+				normals[face[j]].add(fn);
+		}
+
+		for (var i = 0; i < vertCount; i++)
+			normals[i].normalize();
+
+		this.normals = normals;
+	}
+
+	this.smooth = function() {
 		//var qe = this.qe;
 		var qe = new THREE.QuadEdgeMesh(this);
 
