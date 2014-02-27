@@ -10,11 +10,16 @@ THREE.QuadEdgeMesh = function(mesh) {
 		this.faceIndex = faceIndex;
 		this.vert0 = vert0;
 		this.vert1 = vert1;
+		this.master = false;
+		this.index = -1;
 		this.opposite = null;
 		this.faceNext = null;
 		this.facePrev = null;
 		this.vertNext = null;
 		this.vertPrev = null;
+		this.sub = null;
+		this.inner = null;
+		this.outer = null;
 	}
 
 	this.addFace = function(verts) {
@@ -86,6 +91,8 @@ THREE.QuadEdgeMesh = function(mesh) {
 	}
 
 	this.finishEdges = function() {
+		var nextEdgeIndex = 0;
+		
 		for (var i = 0; i < this.edges.length; i++) {
 			var edge = this.edges[i];
 
@@ -94,7 +101,69 @@ THREE.QuadEdgeMesh = function(mesh) {
 				edge.vertPrev = edge.opposite.faceNext;
 
 			this.vertEdges[edge.vert0] = edge;
+			
+			if (edge.index != -1) {
+				edge.master = true;
+				edge.index = nextEdgeIndex;
+				if (edge.opposite) {
+					edge.opposite.index = nextEdgeIndex;
+				}
+				nextEdgeIndex++;
+			}
 		}
+	}
+	
+	this.subdivide = function() {
+		var sub = new QuadEdgeMesh();
+		
+		for (var i = 0; i < this.faceEdges.length; i++) {
+			var firstEdge = this.faceEdges[i];
+
+			var edge = firstEdge;
+			do {
+				var subEdge0 = new HalfEdge(i, i, edge.vert0);
+				var subEdge1 = new HalfEdge(i, edge.vert0, edge.index);
+				var subEdge2 = new HalfEdge(i, edge.index, edge.vert1);
+				var subEdge3 = new HalfEdge(i, edge.vert1, i);
+
+				subEdge0.faceNext = subEdge1;
+				subEdge1.faceNext = subEdge2;
+				subEdge2.faceNext = subEdge3;
+				subEdge3.faceNext = subEdge0;
+
+				subEdge0.facePrev = subEdge3;
+				subEdge1.facePrev = subEdge0;
+				subEdge2.facePrev = subEdge1;
+				subEdge3.facePrev = subEdge2;
+
+				subEdge0.outer = edge;
+				
+				sub.edges.push(subEdge0, subEdge1, subEdge2, subEdge3);
+				
+				sub.faceEdges.push(subEdge0);
+				
+				edge.sub = subEdge1;
+				edge.inner = subEdge3;
+				
+				edge = edge.faceNext;
+			} while (edge != firstEdge);
+
+			var edge = firstEdge;
+			do {
+				edge.facePrev.inner.opposite = edge.inner.faceNext;
+				
+				if (edge.opposite) {
+					edge.sub.opposite = edge.opposite.sub.faceNext;
+					edge.sub.faceNext.opposite = edge.opposite.sub;
+				}
+				
+				edge = edge.faceNext;
+			} while (edge != firstEdge);
+		}
+		
+		sub.finishEdges();
+		
+		return sub;
 	}
 
 	this.faces = [];
@@ -102,12 +171,16 @@ THREE.QuadEdgeMesh = function(mesh) {
 	this.edgeTable = {};
 	this.vertEdges = [];
 	this.faceEdges = [];
-	this.vertCount = mesh.verts.length;
-
-	for (var i = 0; i < mesh.faces.length; i++)
-		this.addFace(mesh.faces[i]);
-
-	this.finishEdges();
+	this.vertCount = 0;
+	
+	if (mesh) {
+		this.vertCount = mesh.verts.length;
+	
+		for (var i = 0; i < mesh.faces.length; i++)
+			this.addFace(mesh.faces[i]);
+	
+		this.finishEdges();
+	}
 }
 
 THREE.FacePoint = 0;
@@ -358,15 +431,9 @@ THREE.SubD = function(parameters) {
 		for (var i = 0; i < qe.edges.length; i++) {
 			var edge = qe.edges[i];
 
-			edge.index = null;					
-		}
-
-		for (var i = 0; i < qe.edges.length; i++) {
-			var edge = qe.edges[i];
-
-			if (edge.index != null)
+			if (!edge.master)
 				continue;
-
+				
 			var edgePoint = new THREE.Vector3();
 			edgePoint.copy(this.verts[edge.vert0]);
 			edgePoint.add(this.verts[edge.vert1]);
@@ -382,10 +449,6 @@ THREE.SubD = function(parameters) {
 
 				vertKinds.push(THREE.BorderEdgePoint);
 			}
-
-			edge.index = verts.length;
-			if (edge.opposite)
-				edge.opposite.index = edge.index;
 
 			verts.push(edgePoint);
 		}
