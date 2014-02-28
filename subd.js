@@ -122,7 +122,7 @@ THREE.QuadEdgeMesh = function(mesh) {
 				var subFaceIndex = sub.faceEdges.length;
 
 				var facePoint = i;
-				var edgePoint = (edge.index != -1 ? edge.index : edge.opposite.index) + firstEdgePoint;
+				var edgePoint = firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index);
 				var vertPoint0 = firstVertPoint + edge.vert0;
 				var vertPoint1 = firstVertPoint + edge.vert1;
 				
@@ -170,6 +170,8 @@ THREE.QuadEdgeMesh = function(mesh) {
 			} while (edge != firstEdge);
 		}
 
+		sub.vertCount = this.faceEdges.length + this.edgeIndexCount + this.vertCount;
+		
 		sub.finishEdges();
 		
 		return sub;
@@ -468,8 +470,6 @@ THREE.SubD = function(parameters) {
 
 		// Calculate vertex points; weighted average of adjacent vertices and face points,
 		// unless border or corner rules apply.
-		var firstVertPoint = verts.length;
-
 		for (var i = 0; i < qe.vertCount; i++) {
 			var firstEdge = qe.vertEdges[i];
 			do {
@@ -537,15 +537,28 @@ THREE.SubD = function(parameters) {
 		// Build new faces from face points, edge points and vertex points.
 		var faces = [];
 
+		var firstEdgePoint = qe.faceEdges.length;
+		var firstVertPoint = firstEdgePoint + qe.edgeIndexCount;
+
 		for (var i = 0; i  < qe.faceEdges.length; i++) {
 			var firstEdge = qe.faceEdges[i];
 			var edge = firstEdge;
 			do {
+				var f = [ 
+					i, 
+					firstEdgePoint + (edge.facePrev.index != -1 ? edge.facePrev.index : edge.facePrev.opposite.index), 
+					firstVertPoint + edge.vert0, 
+					firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index)
+				];
+				if (f[0] == -1 || f[1] == -1 || f[2] == -1 || f[3] == -1)
+					throw "hi";
+				if (f[0] > verts.length || f[1] > verts.length || f[2] > verts.length || f[3] > verts.length)
+					throw "yo";
 				faces.push([ 
 					i, 
-					edge.facePrev.index != -1 ? edge.facePrev.index : edge.facePrev.opposite.index, 
+					firstEdgePoint + (edge.facePrev.index != -1 ? edge.facePrev.index : edge.facePrev.opposite.index), 
 					firstVertPoint + edge.vert0, 
-					edge.index != -1 ? edge.index : edge.opposite.index
+					firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index)
 				]);
 				edge = edge.faceNext;
 			} while (edge != firstEdge);
