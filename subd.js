@@ -122,14 +122,14 @@ THREE.QuadEdgeMesh = function(mesh) {
 				var subFaceIndex = sub.faceEdges.length;
 
 				var facePoint = i;
-				var edgePoint = firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index);
-				var vertPoint0 = firstVertPoint + edge.vert0;
-				var vertPoint1 = firstVertPoint + edge.vert1;
+				var edgePoint0 = firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index);
+				var vertPoint = firstVertPoint + edge.vert0;
+				var edgePoint1 = firstEdgePoint + (edge.faceNext.index != -1 ? edge.faceNext.index : edge.faceNext.opposite.index);
 				
-				var subEdge0 = new HalfEdge(subFaceIndex, facePoint, vertPoint0);
-				var subEdge1 = new HalfEdge(subFaceIndex, vertPoint0, edgePoint);
-				var subEdge2 = new HalfEdge(subFaceIndex, edgePoint, vertPoint1);
-				var subEdge3 = new HalfEdge(subFaceIndex, vertPoint1, facePoint);
+				var subEdge0 = new HalfEdge(subFaceIndex, facePoint, edgePoint0);
+				var subEdge1 = new HalfEdge(subFaceIndex, edgePoint0, vertPoint);
+				var subEdge2 = new HalfEdge(subFaceIndex, vertPoint, edgePoint1);
+				var subEdge3 = new HalfEdge(subFaceIndex, edgePoint1, facePoint);
 
 				subEdge0.faceNext = subEdge1;
 				subEdge1.faceNext = subEdge2;
@@ -140,8 +140,6 @@ THREE.QuadEdgeMesh = function(mesh) {
 				subEdge1.facePrev = subEdge0;
 				subEdge2.facePrev = subEdge1;
 				subEdge3.facePrev = subEdge2;
-
-				subEdge0.outer = edge;
 				
 				sub.edges.push(subEdge0, subEdge1, subEdge2, subEdge3);
 				
@@ -149,6 +147,7 @@ THREE.QuadEdgeMesh = function(mesh) {
 				
 				edge.sub = subEdge1;
 				edge.inner = subEdge3;
+				subEdge3.outer = edge;
 				
 				edge = edge.faceNext;
 			} while (edge != firstEdge);
@@ -159,11 +158,12 @@ THREE.QuadEdgeMesh = function(mesh) {
 
 			var edge = firstEdge;
 			do {
-				edge.facePrev.inner.opposite = edge.inner.faceNext;
+				edge.inner.opposite = edge.faceNext.inner.faceNext;
+				edge.inner.opposite.opposite = edge.inner;
 				
 				if (edge.opposite) {
 					edge.sub.opposite = edge.opposite.sub.faceNext;
-					edge.sub.faceNext.opposite = edge.opposite.sub;
+					edge.sub.opposite.opposite = edge.sub;
 				}
 				
 				edge = edge.faceNext;
