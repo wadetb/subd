@@ -396,6 +396,15 @@ THREE.SubD = function(parameters) {
 
 		for (var i = 0; i < qe.vertCount; i++) {
 			var firstEdge = qe.vertEdges[i];
+
+            // Orphaned verts sometimes exist in source models, will
+            // Simply pass along dummies here to preserve indexing.
+            if (!firstEdge) {
+                vertKinds.push(THREE.CornerVertPoint);
+                verts.push(new THREE.Vector3());
+                continue;
+            }
+
 			do {
 				if (firstEdge.vertPrev)
 					firstEdge = firstEdge.vertPrev;
