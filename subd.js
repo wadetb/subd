@@ -123,7 +123,7 @@ THREE.QuadEdgeMesh = function(mesh) {
 
 				var facePoint = i;
 				var edgePoint0 = firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index);
-				var vertPoint = firstVertPoint + edge.vert0;
+				var vertPoint = firstVertPoint + edge.vert1;
 				var edgePoint1 = firstEdgePoint + (edge.faceNext.index != -1 ? edge.faceNext.index : edge.faceNext.opposite.index);
 				
 				var subEdge0 = new HalfEdge(subFaceIndex, facePoint, edgePoint0);
@@ -472,6 +472,15 @@ THREE.SubD = function(parameters) {
 		// unless border or corner rules apply.
 		for (var i = 0; i < qe.vertCount; i++) {
 			var firstEdge = qe.vertEdges[i];
+
+			// Orphaned verts sometimes exist in source models, will not be represented in the QuadEdgeMesh.
+			// Simply pass along dummies here to preserve indexing.
+			if (!firstEdge) {
+				vertKinds.push(THREE.CornerVertPoint);
+				verts.push(new THREE.Vector3());
+				continue;
+			}
+
 			do {
 				if (firstEdge.vertPrev)
 					firstEdge = firstEdge.vertPrev;
