@@ -10,13 +10,15 @@ THREE.QuadEdgeMesh = function(mesh) {
 		this.faceIndex = faceIndex;
 		this.vert0 = vert0;
 		this.vert1 = vert1;
-		this.index = -1;
+		this.master = false;
+		this.index = null;
 		this.opposite = null;
 		this.faceNext = null;
 		this.facePrev = null;
 		this.vertNext = null;
 		this.vertPrev = null;
-		this.sub = null;
+		this.sub0 = null;
+		this.sub1 = null;
 		this.inner = null;
 		this.outer = null;
 	}
@@ -90,41 +92,55 @@ THREE.QuadEdgeMesh = function(mesh) {
 	}
 
 	this.finishEdges = function() {
-		this.edgeIndexCount = 0;
-		
-		for (var i = 0; i < this.edges.length; i++) {
-			var edge = this.edges[i];
+		var edges = this.edges;
+		var edgeCount = edges.length;
+
+		var masterEdgeCount = 0;
+		var vertEdges = new Array(this.vertCount);
+
+		for (var i = 0; i < edgeCount; i++) {
+			var edge = edges[i];
 
 			edge.vertNext = edge.facePrev.opposite;
 			if (edge.opposite)
 				edge.vertPrev = edge.opposite.faceNext;
 
-			this.vertEdges[edge.vert0] = edge;
+			vertEdges[edge.vert0] = edge;
 			
-			if (edge.opposite == null || edge.opposite.index == -1) {
-				edge.index = this.edgeIndexCount;
-				this.edgeIndexCount++;
+			if (edge.opposite == null || !edge.opposite.master) {
+				edge.master = true;
+				edge.index = masterEdgeCount;
+				if (edge.opposite)
+					edge.opposite.index = masterEdgeCount;
+				masterEdgeCount++;
 			}
 		}
+
+		this.edgeCount = masterEdgeCount;
+		this.vertEdges = vertEdges;
 	}
 	
 	this.subdivide = function() {
 		var sub = new THREE.QuadEdgeMesh();
 
-		var firstEdgePoint = this.faceEdges.length;
-		var firstVertPoint = firstEdgePoint + this.edgeIndexCount;
+		var faceEdges = this.faceEdges;
+		var faceCount = faceEdges.length;
 
-		for (var i = 0; i < this.faceEdges.length; i++) {
-			var firstEdge = this.faceEdges[i];
+		var firstEdgePoint = faceCount;
+		var firstVertPoint = firstEdgePoint + this.edgeCount;
+
+		// Build new half-edges for each face.
+		for (var i = 0; i < faceCount; i++) {
+			var firstEdge = faceEdges[i];
 
 			var edge = firstEdge;
 			do {
 				var subFaceIndex = sub.faceEdges.length;
 
 				var facePoint = i;
-				var edgePoint0 = firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index);
-				var vertPoint = firstVertPoint + edge.vert1;
-				var edgePoint1 = firstEdgePoint + (edge.faceNext.index != -1 ? edge.faceNext.index : edge.faceNext.opposite.index);
+				var edgePoint0 = firstEdgePoint + edge.facePrev.index;
+				var vertPoint = firstVertPoint + edge.vert0;
+				var edgePoint1 = firstEdgePoint + edge.index;
 				
 				var subEdge0 = new HalfEdge(subFaceIndex, facePoint, edgePoint0);
 				var subEdge1 = new HalfEdge(subFaceIndex, edgePoint0, vertPoint);
@@ -145,16 +161,20 @@ THREE.QuadEdgeMesh = function(mesh) {
 				
 				sub.faceEdges.push(subEdge0);
 				
-				edge.sub = subEdge1;
+				// Create links between the two levels' topology.
+				edge.facePrev.sub1 = subEdge1;
+				edge.sub0 = subEdge2;
 				edge.inner = subEdge3;
-				subEdge3.outer = edge;
+				subEdge0.outer = edge.facePrev;
 				
 				edge = edge.faceNext;
 			} while (edge != firstEdge);
 		}
 		
-		for (var i = 0; i < this.faceEdges.length; i++) {
-			var firstEdge = this.faceEdges[i];
+		// With all edges added, link internal edges to their opposites using the
+		// topological links we created before.
+		for (var i = 0; i < faceCount; i++) {
+			var firstEdge = faceEdges[i];
 
 			var edge = firstEdge;
 			do {
@@ -162,28 +182,30 @@ THREE.QuadEdgeMesh = function(mesh) {
 				edge.inner.opposite.opposite = edge.inner;
 				
 				if (edge.opposite) {
-					edge.sub.opposite = edge.opposite.sub.faceNext;
-					edge.sub.opposite.opposite = edge.sub;
+					edge.sub0.opposite = edge.opposite.sub1;
+					edge.sub0.opposite.opposite = edge.sub0;
+					edge.sub1.opposite = edge.opposite.sub0;
+					edge.sub1.opposite.opposite = edge.sub1;
 				}
 				
 				edge = edge.faceNext;
 			} while (edge != firstEdge);
 		}
 
-		sub.vertCount = this.faceEdges.length + this.edgeIndexCount + this.vertCount;
+		sub.vertCount = faceCount + this.edgeCount + this.vertCount;
 		
+		// Allocate edge IDs and connect edges to vertices.
 		sub.finishEdges();
 		
 		return sub;
 	}
 
-	this.faces = [];
 	this.edges = [];
 	this.edgeTable = {};
 	this.vertEdges = [];
 	this.faceEdges = [];
 	this.vertCount = 0;
-	this.edgeIndexCount = 0;
+	this.edgeCount = 0;
 
 	if (mesh) {
 		this.vertCount = mesh.verts.length;
@@ -446,7 +468,7 @@ THREE.SubD = function(parameters) {
 		for (var i = 0; i < qe.edges.length; i++) {
 			var edge = qe.edges[i];
 
-			if (edge.index == -1)
+			if (!edge.master)
 				continue;
 				
 			var edgePoint = new THREE.Vector3();
@@ -473,11 +495,11 @@ THREE.SubD = function(parameters) {
 		for (var i = 0; i < qe.vertCount; i++) {
 			var firstEdge = qe.vertEdges[i];
 
-			// Orphaned verts sometimes exist in source models, will not be represented in the QuadEdgeMesh.
-			// Simply pass along dummies here to preserve indexing.
+			// Orphaned verts sometimes exist in source models, but will be skipped by the QuadEdgeMesh.
+			// Simply pass them along here to preserve indexing.
 			if (!firstEdge) {
 				vertKinds.push(THREE.CornerVertPoint);
-				verts.push(new THREE.Vector3());
+				verts.push(this.verts[i]);
 				continue;
 			}
 
@@ -543,42 +565,29 @@ THREE.SubD = function(parameters) {
 			verts.push(vertPoint);
 		}
 
-		// Build new faces from face points, edge points and vertex points.
+		// Subdivide the topology.
+		var subQE = this.qe.subdivide();
+
+		// Build the new faces from the subdivided topology.
 		var faces = [];
 
-		var firstEdgePoint = qe.faceEdges.length;
-		var firstVertPoint = firstEdgePoint + qe.edgeIndexCount;
+		for (var i = 0; i < subQE.faceEdges.length; i++) {
+			var edge = subQE.faceEdges[i];
 
-		for (var i = 0; i  < qe.faceEdges.length; i++) {
-			var firstEdge = qe.faceEdges[i];
-			var edge = firstEdge;
-			do {
-				var f = [ 
-					i, 
-					firstEdgePoint + (edge.facePrev.index != -1 ? edge.facePrev.index : edge.facePrev.opposite.index), 
-					firstVertPoint + edge.vert0, 
-					firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index)
-				];
-				if (f[0] == -1 || f[1] == -1 || f[2] == -1 || f[3] == -1)
-					throw "hi";
-				if (f[0] > verts.length || f[1] > verts.length || f[2] > verts.length || f[3] > verts.length)
-					throw "yo";
-				faces.push([ 
-					i, 
-					firstEdgePoint + (edge.facePrev.index != -1 ? edge.facePrev.index : edge.facePrev.opposite.index), 
-					firstVertPoint + edge.vert0, 
-					firstEdgePoint + (edge.index != -1 ? edge.index : edge.opposite.index)
-				]);
-				edge = edge.faceNext;
-			} while (edge != firstEdge);
+			// As of the first subdivision level, all faces are quads.
+			var face = [];
+			for (var j = 0; j < 4; j++) {
+				face.push(edge.vert0);
+				edge = edge.faceNext;				
+			}
+			
+			faces.push(face);
 		}
-
-		var subQE = this.qe.subdivide();
 
 		return new THREE.SubD({ 
 			'verts': verts, 
-			'faces': faces, 
 			'vertKinds': vertKinds,
+			'faces': faces,
 			'qe': subQE
 		});
 	}
