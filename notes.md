@@ -3,7 +3,6 @@ SubD Notes
 
 # TODO
 
-- Extend the QuadEdgeMesh each step instead of recalculating it.
 - Make original face edges bold in wireframe
 - Textures
 - Texture coordinate smoothing

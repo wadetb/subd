@@ -237,11 +237,7 @@ THREE.SubD = function(parameters) {
 			this.vertKinds[i] = THREE.SmoothVertPoint;
 	}
 
-	if ("qe" in parameters) {
-		this.qe = parameters.qe;
-	} else {
-		this.qe = new THREE.QuadEdgeMesh(this);
-	}
+	this.qe = parameters.qe || null;
 
 	this.makeGeometry = function(parameters) {
 		parameters = parameters || {}
@@ -439,22 +435,29 @@ THREE.SubD = function(parameters) {
 	}
 
 	this.smooth = function() {
-		var qe = this.qe;
+		var qe;
+		if (this.qe) {
+			qe = this.qe.subdivide();
+		} else {
+			qe = new THREE.QuadEdgeMesh(this);
+		}
 
 		var verts = [];
 		var vertKinds = [];
 
 		// Calculate face points; centroid of face verts.
 		for (var i = 0; i < qe.faceEdges.length; i++) {
-			var facePoint = new THREE.Vector3();
+			var firstEdge = qe.faceEdges[i];
 
-			var edge = qe.faceEdges[i];
+			var facePoint = new THREE.Vector3();
 			var valence = 0;
+
+			var edge = firstEdge;
 			do {
 				facePoint.add(this.verts[edge.vert0]);
 				valence++;
 				edge = edge.faceNext;
-			} while (edge != qe.faceEdges[i]);
+			} while (edge != firstEdge);
 
 			facePoint.divideScalar(valence);
 
@@ -565,30 +568,32 @@ THREE.SubD = function(parameters) {
 			verts.push(vertPoint);
 		}
 
-		// Subdivide the topology.
-		var subQE = this.qe.subdivide();
-
-		// Build the new faces from the subdivided topology.
+		// Build the new faces from the vertices we just created.
 		var faces = [];
 
-		for (var i = 0; i < subQE.faceEdges.length; i++) {
-			var edge = subQE.faceEdges[i];
+		var firstEdgePoint = qe.faceEdges.length;
+		var firstVertPoint = firstEdgePoint + qe.edgeCount;
 
-			// As of the first subdivision level, all faces are quads.
-			var face = [];
-			for (var j = 0; j < 4; j++) {
-				face.push(edge.vert0);
-				edge = edge.faceNext;				
-			}
-			
-			faces.push(face);
+		for (var i = 0; i < qe.faceEdges.length; i++) {
+			var firstEdge = qe.faceEdges[i];
+
+			var edge = firstEdge;
+			do {
+				faces.push([
+					i,
+					firstEdgePoint + edge.facePrev.index,
+					firstVertPoint + edge.vert0,
+					firstEdgePoint + edge.index
+				]);
+				edge = edge.faceNext;
+			} while (edge != firstEdge);
 		}
 
 		return new THREE.SubD({ 
 			'verts': verts, 
 			'vertKinds': vertKinds,
 			'faces': faces,
-			'qe': subQE
+			'qe': qe
 		});
 	}
 }
