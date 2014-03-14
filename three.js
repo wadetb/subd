@@ -8650,7 +8650,7 @@ THREE.Projector = function () {
 					_sprite.id = object.id;
 					_sprite.x = _vector4.x * invW;
 					_sprite.y = _vector4.y * invW;
-					_sprite.z = _vector4.z;
+					_sprite.z = _vector4.z - 0.005;
 					_sprite.object = object;
 
 					_sprite.rotation = object.rotation;
