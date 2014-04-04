@@ -41,14 +41,16 @@
 		<div id="info"><a href="http://wadeb.com/">wadeb</a> - SubD<br/><br/>
 		<b>0-3</b> smoothness, <b>C</b> control mesh, <b>V</b> verts, <b>W</b> wireframe<br/>
 		<b>Models [</b> 
-		<a href="javascript:setModel('torus.obj');">torus</a> 
-		<a href="javascript:setModel('sphere.obj');">sphere</a> 
-		<a href="javascript:setModel('cylinder.obj');">cylinder</a> 
-		<a href="javascript:setModel('circle.obj');">circle</a> 
-		<a href="javascript:setModel('head.obj');">head</a> 
-		<a href="javascript:setModel('bigguy_0.obj');">bigguy</a> 
-		<a href="javascript:setModel('monsterfrog_cage0.obj');">monsterfrog</a> 
-		<a href="javascript:setModel('mudbox_reptile.obj');">reptile</a> 
+		<a href="javascript:loadServerModel('torus.obj');">torus</a> 
+		<a href="javascript:loadServerModel('sphere.obj');">sphere</a> 
+		<a href="javascript:loadServerModel('cylinder.obj');">cylinder</a> 
+		<a href="javascript:loadServerModel('circle.obj');">circle</a> 
+		<a href="javascript:loadServerModel('head.obj');">head</a> 
+		<a href="javascript:loadServerModel('bigguy_0.obj');">bigguy</a> 
+		<a href="javascript:loadServerModel('monsterfrog_cage0.obj');">monsterfrog</a> 
+		<a href="javascript:loadServerModel('mudbox_reptile.obj');">reptile</a> 
+		<input type="file" id="files" name="files[]" multiple />
+		<output id="list"></output>
 		<b>]</b><br/>
 		<div id="credit">bigguy and monsterfrog created by bay raitt<br/>
 		</div>
@@ -234,16 +236,35 @@
 		var sceneScale = 4.0;
 		var model;
 
-		function setModel(name) {
-			var loader = new THREE.SubDOBJLoader( manager );
-			loader.load( 'http://wadeb.com/subd/'+name, function(subd) {
+		function loadModel(url) {
+			var loader = new THREE.SubDOBJLoader(manager);
+			loader.load(url, function(subd) {
 				fitSubD(subd, sceneScale)
 				model = subd;
 				buildGeometry();
 				buildScene();
 				render();
-			});
+			});			
 		}
+
+		function loadServerModel(name) {
+			loadModel('http://wadeb.com/subd/' + name);
+		}
+
+		function loadLocalModel(event) {
+			var files = event.target.files;
+
+			var reader = new FileReader();
+
+			reader.onload = function(e) {
+				window.console.log(e);
+				loadModel(e.target.result);
+			}
+
+			reader.readAsDataURL(files[0]);
+		}
+
+		document.getElementById('files').addEventListener('change', loadLocalModel, false);
 
 		var subdMaterial = new THREE.MeshPhongMaterial( { ambient: 0xffffff, color: 0xdddddd, specular: 0 } );
 		var subdInsideMaterial = new THREE.MeshPhongMaterial( { ambient: 0x303030, color: 0xdddddd, specular: 0 } );
@@ -415,12 +436,12 @@
 		buildScene();
 		render();
 
-		// setModel('monsterfrog_cage0.obj');
-		// setModel('circle.obj');
+		// loadServerModel('monsterfrog_cage0.obj');
+		// loadServerModel('circle.obj');
 		// camera.position.set(1, 3, 8);
 		// controls.target.set(0, 2, 0);
 		// controls.update();
-		setModel('head.obj');
+		loadServerModel('head.obj');
 		camera.position.set(1, 3, 8);
 		controls.target.set(0, 2, 0);
 		controls.update();
