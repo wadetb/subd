@@ -26,6 +26,7 @@
 			}
 
 			a { color: #181; }
+			a.fileop { color: #bb1; }
 
 			b { color:orange }
 
@@ -49,8 +50,8 @@
 		<a href="javascript:loadServerModel('bigguy_0.obj');">bigguy</a> 
 		<a href="javascript:loadServerModel('monsterfrog_cage0.obj');">monsterfrog</a> 
 		<a href="javascript:loadServerModel('mudbox_reptile.obj');">reptile</a> 
-		<input type="file" id="files" name="files[]" multiple />
-		<output id="list"></output>
+		<input type="file" id="import" style="display:none;"/>
+		<a href="javascript:document.getElementById('import').click();" class="fileop">import.obj</a> 
 		<b>]</b><br/>
 		<div id="credit">bigguy and monsterfrog created by bay raitt<br/>
 		</div>
@@ -236,35 +237,34 @@
 		var sceneScale = 4.0;
 		var model;
 
-		function loadModel(url) {
+		function processModel(subd) {
+			fitSubD(subd, sceneScale)
+			model = subd;
+			buildGeometry();
+			buildScene();
+			render();
+		}
+
+		function loadServerModel(url) {
 			var loader = new THREE.SubDOBJLoader(manager);
 			loader.load(url, function(subd) {
-				fitSubD(subd, sceneScale)
-				model = subd;
-				buildGeometry();
-				buildScene();
-				render();
+				processModel(subd);
 			});			
 		}
 
-		function loadServerModel(name) {
-			loadModel('http://wadeb.com/subd/' + name);
-		}
-
 		function loadLocalModel(event) {
-			var files = event.target.files;
-
 			var reader = new FileReader();
 
 			reader.onload = function(e) {
-				window.console.log(e);
-				loadModel(e.target.result);
+				var loader = new THREE.SubDOBJLoader(manager);
+				var subd = loader.parse(e.target.result);
+				processModel(subd);
 			}
 
-			reader.readAsDataURL(files[0]);
+			reader.readAsText(event.target.files[0]);
 		}
 
-		document.getElementById('files').addEventListener('change', loadLocalModel, false);
+		document.getElementById('import').addEventListener('change', loadLocalModel, false);
 
 		var subdMaterial = new THREE.MeshPhongMaterial( { ambient: 0xffffff, color: 0xdddddd, specular: 0 } );
 		var subdInsideMaterial = new THREE.MeshPhongMaterial( { ambient: 0x303030, color: 0xdddddd, specular: 0 } );
