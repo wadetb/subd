@@ -402,7 +402,7 @@
 		controls.update();
 		controls.addEventListener('change', render);
 
-		var onKeyDown = function() {
+		var onKeyDown = function(event) {
 			switch( event.keyCode ) {
 				case 48: /*0*/ smoothLevel = 0; buildGeometry(); break;
 				case 49: /*1*/ smoothLevel = 1; buildGeometry(); break;
